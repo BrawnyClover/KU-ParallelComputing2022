@@ -14,7 +14,7 @@
 const int DISPLAY_WIDTH = 400;
 const int DISPLAY_HEIGHT = 400;
 const int PIXEL_CNT = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-const int DATA_CNT = (DISPLAY_WIDTH) * (DISPLAY_HEIGHT + 1);
+const int DATA_CNT = (DISPLAY_HEIGHT) * (DISPLAY_WIDTH + 1);
 
 const int COMPLEX_SPACE = 2;
 
@@ -37,6 +37,7 @@ const double SCALE_IMAGE = (double)(IMAGE_MAX - IMAGE_MIN) / (double)DISPLAY_HEI
 unsigned char image[DISPLAY_HEIGHT][DISPLAY_WIDTH][3];
 
 int result[DATA_CNT] = {};
+const int SHARPNESS = 20;
 
 int calcPixel(int x, int y);
 void processSlave(int rank, int block_width);
@@ -85,7 +86,7 @@ int calcPixel(int x, int y)
 void processSlave(int rank, int block_width)
 {
 	int color;
-	int* data = (int*)malloc(block_width * (DISPLAY_HEIGHT + 1) * sizeof(int));
+	int* data = (int*)malloc(block_width * (DISPLAY_WIDTH + 1) * sizeof(int));
 	int* rows = (int*)malloc(block_width * sizeof(int));
 
 	int offset;
@@ -104,17 +105,17 @@ void processSlave(int rank, int block_width)
 		else if((status.MPI_TAG == STATUS_CALC)){
 			printf("Slave %d : calculating color from row %d to %d ", rank, rows[0], rows[block_width - 1]);
 			for (int i = 0; i < block_width; i++) {
-				offset = (DISPLAY_HEIGHT + 1) * i;
+				offset = (DISPLAY_WIDTH + 1) * i;
 				data[offset] = rows[i];
 				int serialized_idx;
-				for (int col = 0; col < DISPLAY_HEIGHT; ++col) {
+				for (int col = 0; col < DISPLAY_WIDTH; ++col) {
 					color = calcPixel(col, rows[i]);
 					serialized_idx = offset + col + 1;
 					data[serialized_idx] = color;
 				}
 			}
 			printf("...done, send data to master\n");
-			MPI_Send(data, (DISPLAY_HEIGHT + 1) * block_width, MPI_INT, 0, STATUS_DATA, MPI_COMM_WORLD);
+			MPI_Send(data, (DISPLAY_WIDTH + 1) * block_width, MPI_INT, 0, STATUS_DATA, MPI_COMM_WORLD);
 		}
 		if (isStatic) {
 			break;
@@ -128,7 +129,7 @@ void processSlave(int rank, int block_width)
 void processMaster(int process_cnt, int block_width)
 {
 	int* rows = (int*)malloc(block_width * sizeof(int));
-	int* data = (int*)malloc(block_width * (DISPLAY_HEIGHT + 1) * sizeof(int));
+	int* data = (int*)malloc(block_width * (DISPLAY_WIDTH + 1) * sizeof(int));
 	int task_running = 0;
 	int row_cnt = 0;
 	int process_id;
@@ -155,7 +156,7 @@ void processMaster(int process_cnt, int block_width)
 
 
 	while (task_running > 0) {
-		MPI_Recv(data, (DISPLAY_HEIGHT + 1) * block_width, MPI_INT, MPI_ANY_SOURCE, STATUS_DATA, MPI_COMM_WORLD, &status);
+		MPI_Recv(data, (DISPLAY_WIDTH + 1) * block_width, MPI_INT, MPI_ANY_SOURCE, STATUS_DATA, MPI_COMM_WORLD, &status);
 		--task_running;
 		process_id = status.MPI_SOURCE;
 		printf("Master : Received Data from slave %d\n", process_id);
@@ -181,12 +182,12 @@ void processMaster(int process_cnt, int block_width)
 			}
 		}
 		for (int i = 0; i < block_width; i++) {
-			int data_offset = (DISPLAY_HEIGHT + 1) * i;
+			int data_offset = (DISPLAY_WIDTH + 1) * i;
 			int row_num = data[data_offset];
-			int offset = row_num * (DISPLAY_HEIGHT + 1);
+			int offset = row_num * (DISPLAY_WIDTH + 1);
 
 			result[offset] = data[data_offset];
-			for (int col = 0; col < DISPLAY_HEIGHT; col++) {
+			for (int col = 0; col < DISPLAY_WIDTH; col++) {
 				result[offset + col + 1] = data[data_offset + col + 1];
 			}
 		}
@@ -216,10 +217,10 @@ void generateBitmapImage()
 
 	for (int i = 0; i < DISPLAY_HEIGHT; i++) {
 		for (int j = 0; j < DISPLAY_WIDTH; j++) {
-			int index = (DISPLAY_HEIGHT + 1) * i + j + 1;
-			image[i][j][2] = (unsigned char)(result[index]);
-			image[i][j][1] = (unsigned char)(result[index]);
-			image[i][j][0] = (unsigned char)(result[index]);
+			int index = (DISPLAY_WIDTH + 1) * i + j + 1;
+			image[i][j][2] = (unsigned char)(result[index] * SHARPNESS);
+			image[i][j][1] = (unsigned char)(result[index] * SHARPNESS);
+			image[i][j][0] = (unsigned char)(result[index] * SHARPNESS);
 			fprintf(imageFile, "%c", image[i][j][2]);
 			fprintf(imageFile, "%c", image[i][j][1]);
 			fprintf(imageFile, "%c", image[i][j][0]);
@@ -302,12 +303,12 @@ int main(int argc, char* argv[])
 	}
 
 	isStatic = argc >= 2 ? 1 : 0;
-	int block_width = DISPLAY_WIDTH;
+	int block_width = DISPLAY_HEIGHT;
 	if (isStatic) {
-		block_width = DISPLAY_WIDTH / (np - 1);
+		block_width = DISPLAY_HEIGHT / (np - 1);
 	}
 	else {
-		block_width = DISPLAY_WIDTH / N_rectanle;
+		block_width = DISPLAY_HEIGHT / N_rectanle;
 	}
 
 	if (me == 0) { // Master
