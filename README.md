@@ -1,4 +1,4 @@
-# Parallel_Computing
+# Parallel_Computing 
 
 ## Computer Assignment 1 : Mandelbrot Set
 * Dynamic 방식과 Static 방식으로 병렬처리를 진행
